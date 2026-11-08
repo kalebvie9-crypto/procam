@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hanami</title>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--nuit:#12152b;--lune:#f3e9d2;--petale:#f4b6c6;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html,body{height:100%;margin:0}
+body{background:var(--nuit);color:var(--lune);font-family:'Shippori Mincho',Georgia,'Times New Roman',serif;overflow:hidden}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+.ui{position:relative;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:22px 20px 18px;box-sizing:border-box;pointer-events:none}
+h1{margin:0;font-weight:600;font-size:2rem;letter-spacing:.04em}
+.sub{margin:6px 0 0;font-size:.95rem;opacity:.7;max-width:26ch;line-height:1.5}
+.bar{pointer-events:auto;max-width:520px;width:100%;margin:0 auto}
+input{width:100%;box-sizing:border-box;background:rgba(18,21,43,.55);color:var(--lune);border:0;border-bottom:1px solid var(--petale);padding:12px 4px;font:inherit;font-size:18px;outline:none;border-radius:0}
+input:focus-visible{border-bottom-width:2px}
+input::placeholder{color:var(--lune);opacity:.5}
+.btns{display:flex;gap:18px;margin-top:10px}
+button{background:none;border:0;color:var(--petale);font:inherit;font-size:1rem;padding:8px 0;cursor:pointer;text-decoration:underline;text-underline-offset:4px}
+button:focus-visible{outline:2px solid var(--petale);outline-offset:3px}
+</style>
+</head>
+<body>
+<canvas id="c" aria-hidden="true"></canvas>
+<div class="ui">
+  <div>
+    <h1>Hanami</h1>
+    <p class="sub">Écris une phrase. Chaque lettre devient une fleur et une note.</p>
+  </div>
+  <div class="bar">
+    <input id="t" type="text" maxlength="120" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Il était une fois…" aria-label="Ton texte">
+    <div class="btns">
+      <button id="replay" type="button">Rejouer</button>
+      <button id="reseed" type="button">Nouvel arbre</button>
+    </div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('c'),g=cv.getContext('2d');
+const input=document.getElementById('t');
+let W,H,dpr,bg,stars=[];
+function size(){
+  dpr=Math.min(window.devicePixelRatio||1,2);W=innerWidth;H=innerHeight;
+  cv.width=W*dpr;cv.height=H*dpr;g.setTransform(dpr,0,0,dpr,0,0);
+  bg=g.createLinearGradient(0,0,0,H);bg.addColorStop(0,'#0c0e20');bg.addColorStop(.7,'#1c1b3a');bg.addColorStop(1,'#2d2346');
+  stars=[];for(let i=0;i<70;i++)stars.push([Math.random()*W,Math.random()*H*.6,Math.random()*1.3+.3,Math.random()*6]);
+}
+addEventListener('resize',size);size();
+
+let seed=(Math.random()*1e6)|0;
+function rnd(id,k){
+  let h=(Math.imul(id,374761393)+Math.imul(k,668265263)+Math.imul(seed,2246822519))|0;
+  h=Math.imul(h^(h>>>13),1274126177);h^=h>>>16;
+  return (h>>>0)/4294967296;
+}
+
+let text=[],pb=[],born=new Map(),ends=new Map(),petals=[];
+const COLS=['#f4b6c6','#f7d1d9','#e98fa7','#fbe3c4','#c9b6f2'];
+const scale=[0,2,4,7,9];let ac;
+
+function ping(code,when){
+  try{
+    ac=ac||new (window.AudioContext||window.webkitAudioContext)();
+    const t=ac.currentTime+(when||0);
+    const o=ac.createOscillator(),v=ac.createGain();
+    o.type='triangle';
+    o.frequency.value=261.63*Math.pow(2,scale[code%5]/12+(Math.floor(code/5)%3));
+    v.gain.setValueAtTime(0.0001,t);
+    v.gain.exponentialRampToValueAtTime(0.13,t+0.015);
+    v.gain.exponentialRampToValueAtTime(0.0001,t+1.4);
+    o.connect(v);v.connect(ac.destination);o.start(t);o.stop(t+1.5);
+  }catch(e){}
+}
+
+function depthMax(){return Math.min(9,3+Math.floor(text.length/5));}
+
+function grow(x,y,a,len,d,id,now,D){
+  let b=born.get(id);
+  if(b===undefined){b=now;born.set(id,b);}
+  const f=Math.min(1,Math.max(0,(now-b)/900)),e=1-Math.pow(1-f,3);
+  const ang=a+Math.sin(now/1500+id*0.7)*(d+1)*0.004;
+  const x2=x+Math.sin(ang)*len*e,y2=y-Math.cos(ang)*len*e;
+  g.strokeStyle='hsl(12 22% '+(32+d*4)+'%)';
+  g.lineWidth=Math.max(.9,(10-d)*1.15);
+  g.lineCap='round';
+  g.beginPath();g.moveTo(x,y);g.lineTo(x2,y2);g.stroke();
+  if(d>=3)ends.set(id,[x2,y2]);
+  if(d<D){
+    const sp=.28+.4*rnd(id,1),lean=(rnd(id,2)-.5)*.25,nl=len*(.74+.1*rnd(id,3));
+    grow(x2,y2,ang-sp+lean,nl,d+1,id*3+1,now,D);
+    grow(x2,y2,ang+sp+lean,nl,d+1,id*3+2,now,D);
+  }
+}
+
+function siteId(i){
+  const dt=Math.min(3+Math.floor(rnd(i+999,0)*6),3+Math.floor(i/5));
+  let id=0;
+  for(let k=0;k<dt;k++)id=id*3+1+(rnd(i+7,k)>.5?1:0);
+  return id;
+}
+
+function flower(x,y,r,col,rot){
+  g.fillStyle=col;
+  for(let k=0;k<5;k++){
+    const a=rot+k*1.2566;
+    g.beginPath();g.arc(x+Math.cos(a)*r*.6,y+Math.sin(a)*r*.6,r*.55,0,6.283);g.fill();
+  }
+  g.fillStyle='#fff3c4';g.beginPath();g.arc(x,y,r*.25,0,6.283);g.fill();
+}
+
+function burst(n){
+  const arr=[...ends.values()];if(!arr.length)return;
+  for(let i=0;i<n;i++){
+    const p=arr[(Math.random()*arr.length)|0];
+    petals.push({x:p[0],y:p[1],vx:(Math.random()-.5)*.8,vy:.3+Math.random()*.6,r:2+Math.random()*2.5,rot:Math.random()*6,vr:(Math.random()-.5)*.08,c:COLS[(Math.random()*5)|0]});
+  }
+}
+
+function frame(now){
+  g.fillStyle=bg;g.fillRect(0,0,W,H);
+  for(const s of stars){
+    g.globalAlpha=.35+.35*Math.sin(now/900+s[3]);
+    g.fillStyle='#f3e9d2';g.fillRect(s[0],s[1],s[2],s[2]);
+  }
+  g.globalAlpha=1;
+  const mx=W*.8,my=H*.15,mr=Math.min(W,H)*.06;
+  const gl=g.createRadialGradient(mx,my,mr*.6,mx,my,mr*3);
+  gl.addColorStop(0,'rgba(243,233,210,.25)');gl.addColorStop(1,'rgba(243,233,210,0)');
+  g.fillStyle=gl;g.fillRect(mx-mr*3,my-mr*3,mr*6,mr*6);
+  g.fillStyle='#f3e9d2';g.beginPath();g.arc(mx,my,mr,0,6.283);g.fill();
+
+  const baseY=H*.86;
+  g.fillStyle='rgba(10,9,24,.55)';
+  g.beginPath();g.ellipse(W/2,baseY+4,Math.min(W*.4,220),10,0,0,6.283);g.fill();
+
+  ends=new Map();
+  grow(W/2,baseY,0,Math.min(H*.17,W*.3),0,0,now,depthMax());
+
+  for(let i=0;i<text.length;i++){
+    const f=(now-pb[i])/500;if(f<0)continue;
+    const p=ends.get(siteId(i));if(!p)continue;
+    const s=f>=1?1:(f<.6?f/.6*1.25:1.25-(f-.6)/.4*.25);
+    const ox=(rnd(i,5)-.5)*14,oy=(rnd(i,7)-.5)*14;
+    flower(p[0]+ox,p[1]+oy,(5+rnd(i,6)*4)*s,COLS[text[i].codePointAt(0)%5],rnd(i,8)*6);
+  }
+
+  if(text.length&&Math.random()<.06)burst(1);
+  for(let i=petals.length-1;i>=0;i--){
+    const p=petals[i];
+    p.x+=p.vx+Math.sin(now/600+i)*.35;p.y+=p.vy;p.rot+=p.vr;
+    if(p.y>baseY+8){petals.splice(i,1);continue;}
+    g.save();g.translate(p.x,p.y);g.rotate(p.rot);g.fillStyle=p.c;
+    g.beginPath();g.ellipse(0,0,p.r,p.r*.6,0,0,6.283);g.fill();g.restore();
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+input.addEventListener('input',()=>{
+  const t=[...input.value].slice(0,120),prev=text.length,now=performance.now();
+  text=t;
+  if(t.length>prev){
+    for(let i=prev;i<t.length;i++)pb[i]=now;
+    const c=t[t.length-1];
+    ping(c.codePointAt(0));
+    if(/[\s.,!?;:]/.test(c))burst(10);
+  }else pb.length=t.length;
+});
+
+function replay(){
+  const now=performance.now();
+  text.forEach((c,i)=>{pb[i]=now+400+i*150;ping(c.codePointAt(0),(400+i*150)/1000);});
+  setTimeout(()=>burst(30),400+text.length*150);
+}
+document.getElementById('replay').addEventListener('click',replay);
+document.getElementById('reseed').addEventListener('click',()=>{
+  seed=(Math.random()*1e6)|0;born.clear();petals=[];
+  const now=performance.now();text.forEach((c,i)=>{pb[i]=now+700+i*40;});
+});
+input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();replay();}});
+</script>
+</body>
+</html>
